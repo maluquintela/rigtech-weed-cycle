@@ -1,0 +1,32 @@
+# Bytes ficam fora do Git — versionados por snapshot.py em work/versions/
+work/
+!work/.gitkeep
+
+# Segredos
+.env
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Ultralytics / runs
+runs/
+*.pt
+*.onnx
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

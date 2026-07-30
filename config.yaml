@@ -1,0 +1,108 @@
+# =============================================================================
+# rigtech-weed-cycle · fonte única de verdade
+# -----------------------------------------------------------------------------
+# Tudo que muda entre ciclos mora aqui. Alterar limiar, semente ou caminho é
+# um commit rastreável — nunca uma edição silenciosa dentro do notebook.
+# =============================================================================
+
+project:
+  name: rigtech-weed-cycle
+  # A ordem define o class_id nos arquivos de label YOLO-seg.
+  # NUNCA reordenar: reinterpreta silenciosamente todo o dataset.
+  # Para acrescentar classe, acrescente ao final.
+  classes:
+    0: folha_larga
+    1: folha_estreita
+    2: mamona          # 3ª classe descoberta na Fase 0 (geojsons Mamonas*)
+
+paths:
+  # Caminhos relativos são resolvidos contra a raiz do repositório em src/config.py.
+  work_dir: work
+  # Fonte geodada: ortomosaicos GeoTIFF (ODM) + polígonos vetoriais GeoJSON
+  # organizados por talhão (ver Fase 0). NÃO é o dataset de treino — é a
+  # matéria-prima que src/convert_to_yoloseg.py tileia e rasteriza em YOLO-seg.
+  geosource_dir: /Users/maluquintela/Downloads/DaninhasTreinoClientes
+  # Dataset vivo em formato YOLO-seg (gerado pelo conversor). Anotadores editam
+  # aqui após correções vindas do Linear.
+  live_dir: work/live
+  golden_dir: work/golden        # CONGELADO — só leitura, nunca treina
+  versions_dir: work/versions    # v1/, v2/, ... imutáveis
+  runs_dir: work/runs            # pesos, métricas, history.json
+  qa_report: work/runs/qa_static.csv
+  suspects_report: work/runs/suspeitas.csv
+  history: work/runs/history.json
+
+model:
+  arch: yolo26s-seg.pt
+  imgsz: 1024        # erva daninha é objeto pequeno: 640 joga sinal fora
+  seed: 42           # FIXO — mudar entre ciclos invalida a comparação
+  epochs: 100        # treino de produção (com patience o Ultralytics para sozinho)
+  patience: 20
+  batch: 16
+  device: 0          # GPU 0; "cpu" para dev local sem GPU
+
+convert:
+  # Parâmetros do tileamento de ortomosaicos + rasterização de geojsons.
+  # Usado por src/convert_to_yoloseg.py. GSD dos ortomosaicos atuais: ~5 cm/px,
+  # ou seja, 1024 px = ~51 m de cobertura por tile.
+  tile_size: 1024
+  # Stride < tile_size gera overlap (recomendado para preservar instâncias na
+  # borda). Overlap = tile_size - stride. Padrão: 128 px (~12,5%).
+  stride: 896
+  # Tiles cuja fração de pixels válidos (alpha > 0) for menor que isto são
+  # descartados. Evita salvar retalhos de "no-data" do ortomosaico.
+  min_valid_ratio: 0.5
+  # Fração dos tiles SEM polígono a manter como background explícito. Zero =
+  # descartar todos os tiles vazios; algum background é útil para o modelo
+  # aprender a NÃO detectar. Reavaliar após o primeiro ciclo.
+  background_keep_ratio: 0.05
+  # Mapeamento infixo-do-nome-do-geojson -> class_id. Casamento por substring
+  # case-insensitive contra o basename (sem extensão). Alterar em conjunto com
+  # project.classes acima.
+  geojson_class_map:
+    FolhaLarga: 0
+    FolhasLargas: 0
+    FolhaEstreita: 1
+    FolhasEstreitas: 1
+    Mamona: 2
+    Mamonas: 2
+
+xval:
+  k: 4               # partições da validação cruzada
+  arch: yolo26n-seg.pt   # nano: é instrumento de medição, não candidato a produção
+  epochs: 40         # aqui não se busca desempenho, só sinal de desacordo
+  imgsz: 768
+  batch: 32
+  thresholds:
+    mean_iou_below: 0.55        # abaixo disso, imagem entra na fila
+    missed_gt_ratio_above: 0.34 # fração de instâncias anotadas não detectadas
+    ghost_pred_conf_above: 0.70 # confiança mínima de predição sem rótulo
+  batch_size: 40     # imagens enviadas ao Linear por rodada
+
+promotion:
+  metric: seg_mAP50-95
+  min_delta: 0.01              # ganho mínimo para não ser considerado ruído
+  guard_metrics:
+    seg_recall: -0.02          # não promover se o recall despencar mais que 2 pontos
+
+linear:
+  # TODO(fase-1): preencher com a chave real do time (ex.: RIG) e o token
+  # pessoal via variável de ambiente LINEAR_API_KEY. O código NÃO lê a chave
+  # do YAML por segurança.
+  team_key: RIG
+  endpoint: https://api.linear.app/graphql
+  # Nomes dos estados do workflow — precisam bater exatamente com o board.
+  states:
+    selecionadas: Selecionadas
+    em_anotacao: Em anotação
+    em_revisao: Em revisão (QA)
+    pronto_para_treino: Pronto para treino
+    em_treinamento: Em treinamento
+    avaliado: Avaliado
+    aprovado: Aprovado
+  labels:
+    lote: lote-anotacao
+    ciclo: ciclo
+    run: run-modelo
+  watch:
+    interval_seconds: 300

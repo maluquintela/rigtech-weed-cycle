@@ -1,0 +1,22 @@
+# Conteúdo inicial do board do Linear para o ciclo.
+# Consumido por src/bootstrap_linear.py.
+#
+# Estados: verificados contra o workflow do time (não criados pela API).
+# Labels:  criadas se ainda não existirem.
+
+states_esperados:
+  - Selecionadas
+  - Em anotação
+  - Em revisão (QA)
+  - Pronto para treino
+  - Em treinamento
+  - Avaliado
+  - Aprovado
+
+labels:
+  - name: lote-anotacao
+    color: "#4c9aff"
+  - name: ciclo
+    color: "#8777d9"
+  - name: run-modelo
+    color: "#57d9a3"
