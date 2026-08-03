@@ -163,8 +163,19 @@ def discover_pairs(geosource_dir: Path, class_map: dict[str, int]) -> list[GeoSo
 # ---------------------------------------------------------------------------
 
 
-def convert_talhao(pair: GeoSourcePair, cfg, out_dir: Path, rng: random.Random) -> tuple[int, int]:
+def convert_talhao(
+    pair: GeoSourcePair,
+    cfg,
+    out_dir: Path,
+    rng: random.Random,
+    background_tiles: list[str] | None = None,
+) -> tuple[int, int]:
     """Tileia o ortomosaico do talhão e gera pares imagem/label YOLO-seg.
+
+    ``background_tiles``, se fornecido, é preenchido com os stems dos tiles
+    salvos como background intencional — usado pelo caller para escrever o
+    manifest ``background_tiles.json`` (lido por qa_static para evitar falso
+    positivo em ``label_vazio``).
 
     Retorna (tiles_com_polígono, tiles_background_mantidos).
     """
@@ -226,6 +237,8 @@ def convert_talhao(pair: GeoSourcePair, cfg, out_dir: Path, rng: random.Random) 
             # clip dos polígonos contra a janela do tile
             tile_box = box(window.x_off, window.y_off, window.x_off + window.size, window.y_off + window.size)
             lines: list[str] = []
+            tile_area_px = window.size * window.size
+            min_area_px = cfg.convert.min_polygon_area_norm * tile_area_px
             for class_id, ring_px in polys_px:
                 poly = Polygon(ring_px)
                 if not poly.is_valid or poly.is_empty:
@@ -234,19 +247,24 @@ def convert_talhao(pair: GeoSourcePair, cfg, out_dir: Path, rng: random.Random) 
                     continue
                 clipped = poly.intersection(tile_box)
                 for sub in _flatten_polygons(clipped):
+                    # descarta slivers minúsculos gerados pelo clip contra a borda
+                    if sub.area < min_area_px:
+                        continue
                     ext = list(sub.exterior.coords)[:-1]  # anel fechado -> abrir
                     line = polygon_to_yoloseg_line(class_id, ext, window)
                     if line is not None:
                         lines.append(line)
 
+            stem = f"{pair.talhao}_r{window.row:03d}_c{window.col:03d}"
             if not lines:
                 if rng.random() > cfg.convert.background_keep_ratio:
                     continue
                 n_bg_kept += 1
+                if background_tiles is not None:
+                    background_tiles.append(stem)
             else:
                 n_with_poly += 1
 
-            stem = f"{pair.talhao}_r{window.row:03d}_c{window.col:03d}"
             Image.fromarray(rgb, mode="RGB").save(images_dir / f"{stem}.jpg", quality=90)
             (labels_dir / f"{stem}.txt").write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
@@ -308,16 +326,24 @@ def main() -> None:
     rng = random.Random(args.seed)
     total_with = 0
     total_bg = 0
+    background_tiles: list[str] = []
     for p in pairs:
         if not p.is_complete:
             print(f"[skip] {p.talhao}: par incompleto")
             continue
-        with_poly, bg = convert_talhao(p, cfg, args.out, rng)
+        with_poly, bg = convert_talhao(p, cfg, args.out, rng, background_tiles)
         total_with += with_poly
         total_bg += bg
         print(f"[ok]   {p.talhao}: {with_poly} tiles c/ polígono + {bg} background")
 
+    # manifest de background: qa_static.py o lê para não gerar falso positivo
+    # em label_vazio nesses tiles.
+    manifest_path = args.out / "background_tiles.json"
+    manifest_path.write_text(
+        json.dumps({"stems": sorted(background_tiles)}, indent=2), encoding="utf-8"
+    )
     print(f"\nTOTAL: {total_with} tiles com polígono, {total_bg} background -> {args.out}")
+    print(f"manifest background: {manifest_path}")
 
 
 if __name__ == "__main__":

@@ -56,6 +56,12 @@ convert:
   # descartar todos os tiles vazios; algum background é útil para o modelo
   # aprender a NÃO detectar. Reavaliar após o primeiro ciclo.
   background_keep_ratio: 0.05
+  # Polígonos com área normalizada (em [0,1]²) abaixo deste limiar são
+  # descartados APÓS o clip contra a borda do tile. Sem isso, o clip de um
+  # polígono grande que cruza a borda gera slivers de área ~1e-6 que só
+  # geram ruído. O limiar é 10× o do qa_static.instancia_minuscula (1e-5)
+  # para pegar até slivers moderados.
+  min_polygon_area_norm: 1.0e-4
   # Mapeamento infixo-do-nome-do-geojson -> class_id. Casamento por substring
   # case-insensitive contra o basename (sem extensão). Alterar em conjunto com
   # project.classes acima.

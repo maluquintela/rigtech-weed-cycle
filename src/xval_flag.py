@@ -15,11 +15,15 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from src.config import load as load_config
+
+
+_TILE_SUFFIX_RE = re.compile(r"_r\d+_c\d+$")
 
 
 # ---------------------------------------------------------------------------
@@ -50,8 +54,11 @@ def group_key(path: Path) -> str:
     pior que entre tiles adjacentes).
     """
     stem = path.stem
-    if "_r" in stem:
-        return stem.split("_r", 1)[0]
+    # Casa APENAS o sufixo canônico do conversor: _r{digitos}_c{digitos} no fim.
+    # Isso evita falso-positivo em talhões cujo nome contenha "_r" (ex.: MorroRedondo).
+    m = _TILE_SUFFIX_RE.search(stem)
+    if m:
+        return stem[: m.start()]
     return stem
 
 

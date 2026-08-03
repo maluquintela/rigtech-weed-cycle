@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -180,6 +181,22 @@ def _check_label(label_path: Path, nc: int) -> list[Finding]:
 # --- pipeline ---------------------------------------------------------------
 
 
+def _load_background_stems(dataset_dir: Path) -> set[str]:
+    """Lê ``background_tiles.json`` (opcional) gerado pelo conversor.
+
+    Tiles listados aqui foram salvos DELIBERADAMENTE como background pelo
+    conversor — não devem gerar ``label_vazio`` no QA.
+    """
+    manifest = dataset_dir / "background_tiles.json"
+    if not manifest.exists():
+        return set()
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        return set(data.get("stems", []))
+    except json.JSONDecodeError:
+        return set()
+
+
 def run(dataset_dir: Path, nc: int) -> list[Finding]:
     """Roda todas as verificações. Espera estrutura ``dataset_dir/{images,labels}/``."""
     images_dir = dataset_dir / "images"
@@ -191,6 +208,7 @@ def run(dataset_dir: Path, nc: int) -> list[Finding]:
     labels = _list_labels(labels_dir)
     img_by_stem = _stem_map(images)
     lbl_by_stem = _stem_map(labels)
+    background_stems = _load_background_stems(dataset_dir)
 
     findings: list[Finding] = []
 
@@ -205,7 +223,12 @@ def run(dataset_dir: Path, nc: int) -> list[Finding]:
         if stem not in img_by_stem:
             findings.append(Finding(lbl_path.name, "label_orfao", SEVERITY_HIGH, "sem imagem correspondente"))
             continue
-        findings.extend(_check_label(lbl_path, nc))
+        for f in _check_label(lbl_path, nc):
+            # tiles marcados como background pelo conversor são vazios de
+            # propósito — não gerar falso positivo em label_vazio.
+            if f.issue == "label_vazio" and stem in background_stems:
+                continue
+            findings.append(f)
 
     return findings
 
