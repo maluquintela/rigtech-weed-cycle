@@ -103,6 +103,11 @@ def run(
     cfg,
     arch: str | None = None,
     tag: str | None = None,
+    batch: int | None = None,
+    device: str | None = None,
+    amp: bool | None = None,
+    imgsz: int | None = None,
+    epochs: int | None = None,
 ) -> dict:
     """Roda treino + avaliação no golden set. Retorna o registro salvo em history.json."""
     from ultralytics import YOLO
@@ -116,18 +121,24 @@ def run(
     arch_name = arch or cfg.model.arch
 
     model = YOLO(arch_name)
-    model.train(
+    train_kwargs = dict(
         data=str(data_yaml),
-        epochs=cfg.model.epochs,
-        imgsz=cfg.model.imgsz,
-        batch=cfg.model.batch,
+        epochs=epochs if epochs is not None else cfg.model.epochs,
+        imgsz=imgsz if imgsz is not None else cfg.model.imgsz,
+        batch=batch if batch is not None else cfg.model.batch,
         patience=cfg.model.patience,
         seed=cfg.model.seed,
-        device=cfg.model.device,
+        device=device if device is not None else cfg.model.device,
         project=str(run_dir),
         name="train",
         verbose=True,
     )
+    # amp: override CLI vence; senão cai no config; senão default do Ultralytics
+    if amp is not None:
+        train_kwargs["amp"] = amp
+    elif hasattr(cfg.model, "amp"):
+        train_kwargs["amp"] = cfg.model.amp
+    model.train(**train_kwargs)
     metrics = _extract_metrics(model.metrics)
     weights_path = run_dir / "train" / "weights" / "best.pt"
 
@@ -165,9 +176,21 @@ def main() -> None:
     parser.add_argument("--version", required=True, help="identificador da versão (ex.: v3)")
     parser.add_argument("--arch", default=None, help="sobrescreve model.arch (para etapa 6)")
     parser.add_argument("--tag", default=None, help="rótulo livre para identificar o run")
+    parser.add_argument("--batch", type=int, default=None, help="sobrescreve model.batch")
+    parser.add_argument("--device", default=None, help="sobrescreve model.device (cpu | mps | 0)")
+    parser.add_argument("--imgsz", type=int, default=None, help="sobrescreve model.imgsz")
+    parser.add_argument("--epochs", type=int, default=None, help="sobrescreve model.epochs")
+    amp_group = parser.add_mutually_exclusive_group()
+    amp_group.add_argument("--amp", dest="amp", action="store_true", default=None)
+    amp_group.add_argument("--no-amp", dest="amp", action="store_false")
     args = parser.parse_args()
 
-    entry = run(args.version, cfg, arch=args.arch, tag=args.tag)
+    entry = run(
+        args.version, cfg,
+        arch=args.arch, tag=args.tag,
+        batch=args.batch, device=args.device, amp=args.amp,
+        imgsz=args.imgsz, epochs=args.epochs,
+    )
     print(json.dumps(entry, indent=2, ensure_ascii=False))
 
 
