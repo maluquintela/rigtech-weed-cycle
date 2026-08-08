@@ -90,7 +90,13 @@ split:
   # Isso mede generalização entre campos (voos, iluminação, solo diferentes),
   # que é o cenário real de produção.
   mode: talhao_holdout
-  val_talhoes: [Flaviano01]
+  # Giasa escolhido como val (não Flaviano01) após ampliação do dataset para
+  # 5 talhões: Giasa é 22% do total, todas as 3 classes bem representadas
+  # (Mamona=61), CRS e GSD diferentes dos outros (EPSG:31985 vs 32725,
+  # 3.8cm vs 5cm/px) — mede generalização de domínio (voo diferente,
+  # sensor diferente), que é o cenário de produção. DoisRiosFlaviano fica
+  # no train (60% do dataset, quase toda a Mamona).
+  val_talhoes: [Giasa]
 
 xval:
   k: 4               # partições da validação cruzada
