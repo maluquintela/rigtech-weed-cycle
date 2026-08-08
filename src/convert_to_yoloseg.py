@@ -2,10 +2,11 @@
 
 Estrutura de entrada (``paths.geosource_dir``):
 
-    DaninhasTreinoClientes/
-    ├── {talhao}/
-    │   ├── imagem/{talhao}.tif        # 1 ortomosaico GeoTIFF (RGBA), ODM
-    │   └── daninhas/*.geojson         # 1 GeoJSON por classe (nome codifica classe)
+    geosource/
+    └── _talhoes/
+        └── {talhao}/
+            ├── {talhao}.tif           # 1 ortomosaico GeoTIFF (RGBA), ODM
+            └── *.geojson              # 1 GeoJSON por classe (nome codifica classe)
 
 Estrutura de saída (``paths.live_dir``):
 
@@ -135,24 +136,20 @@ def _match_class(name: str, class_map: dict[str, int]) -> int | None:
 
 
 def discover_pairs(geosource_dir: Path, class_map: dict[str, int]) -> list[GeoSourcePair]:
-    """Varre a árvore ``geosource_dir/{talhao}/`` procurando pares tif+geojson."""
+    """Varre ``geosource_dir/{talhao}/`` procurando pares tif+geojson no mesmo diretório."""
     pairs: list[GeoSourcePair] = []
     for talhao_dir in sorted(p for p in geosource_dir.iterdir() if p.is_dir()):
         talhao = talhao_dir.name
-        img_dir = talhao_dir / "imagem"
-        gj_dir = talhao_dir / "daninhas"
-
-        tifs = sorted(img_dir.glob("*.tif")) if img_dir.is_dir() else []
+        tifs = sorted(talhao_dir.glob("*.tif"))
         tif = tifs[0] if tifs else Path("__missing__.tif")
 
         by_class: dict[int, list[Path]] = {}
-        if gj_dir.is_dir():
-            for gj in sorted(gj_dir.glob("*.geojson")):
-                cid = _match_class(gj.stem, class_map)
-                if cid is None:
-                    print(f"  [aviso] {gj.name}: nome não casa com nenhuma classe conhecida")
-                    continue
-                by_class.setdefault(cid, []).append(gj)
+        for gj in sorted(talhao_dir.glob("*.geojson")):
+            cid = _match_class(gj.stem, class_map)
+            if cid is None:
+                print(f"  [aviso] {gj.name}: nome não casa com nenhuma classe conhecida")
+                continue
+            by_class.setdefault(cid, []).append(gj)
         pairs.append(GeoSourcePair(talhao=talhao, tif_path=tif, geojson_by_class=by_class))
     return pairs
 

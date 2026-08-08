@@ -21,7 +21,9 @@ paths:
   # Fonte geodada: ortomosaicos GeoTIFF (ODM) + polígonos vetoriais GeoJSON
   # organizados por talhão (ver Fase 0). NÃO é o dataset de treino — é a
   # matéria-prima que src/convert_to_yoloseg.py tileia e rasteriza em YOLO-seg.
-  geosource_dir: /Users/maluquintela/Downloads/DaninhasTreinoClientes
+  # Extraído de ~/Downloads/Arquivo.zip (2026-08-08) — 4 talhões (Celso01,
+  # CelsoSTE2, Flaviano01, Giasa). Layout: work/geosource/_talhoes/{talhao}/{tif,geojsons}.
+  geosource_dir: work/geosource/_talhoes
   # Dataset vivo em formato YOLO-seg (gerado pelo conversor). Anotadores editam
   # aqui após correções vindas do Linear.
   live_dir: work/live
@@ -33,13 +35,22 @@ paths:
   history: work/runs/history.json
 
 model:
-  arch: yolo26s-seg.pt
+  # arch: nome do modelo Ultralytics. O manual sugeria "yolo26s-seg.pt" como
+  # aspiração, mas na versão instalada (8.4.115) o mais recente disponível é
+  # yolo11s-seg.pt — trocar quando YOLO26 for lançado.
+  arch: yolo11s-seg.pt
   imgsz: 1024        # erva daninha é objeto pequeno: 640 joga sinal fora
   seed: 42           # FIXO — mudar entre ciclos invalida a comparação
   epochs: 100        # treino de produção (com patience o Ultralytics para sozinho)
   patience: 20
-  batch: 16
-  device: 0          # GPU 0; "cpu" para dev local sem GPU
+  # batch=4 em MPS (M4 shared RAM): batch=16 causou OOM silencioso após
+  # "Starting training". amp=False também: AMP no MPS deu instabilidade.
+  # Quando migrar para GPU dedicada (Colab A100), voltar para batch=16 e amp=True.
+  batch: 4
+  amp: false
+  # device: "cpu" | "0" (CUDA) | "mps" (Apple Silicon). Auto-detectado se
+  # deixado como null.
+  device: mps
 
 convert:
   # Parâmetros do tileamento de ortomosaicos + rasterização de geojsons.
@@ -72,6 +83,14 @@ convert:
     FolhasEstreitas: 1
     Mamona: 2
     Mamonas: 2
+
+split:
+  # Hold-out por TALHÃO — golden set real. O(s) talhão(ões) listado(s) em
+  # val_talhoes ficam integralmente em work/golden e nunca entram no train.
+  # Isso mede generalização entre campos (voos, iluminação, solo diferentes),
+  # que é o cenário real de produção.
+  mode: talhao_holdout
+  val_talhoes: [Flaviano01]
 
 xval:
   k: 4               # partições da validação cruzada
