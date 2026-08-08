@@ -136,15 +136,29 @@ def _match_class(name: str, class_map: dict[str, int]) -> int | None:
 
 
 def discover_pairs(geosource_dir: Path, class_map: dict[str, int]) -> list[GeoSourcePair]:
-    """Varre ``geosource_dir/{talhao}/`` procurando pares tif+geojson no mesmo diretório."""
+    """Varre ``geosource_dir/{talhao}/`` procurando pares tif+geojson.
+
+    Aceita dois layouts para cada talhão:
+    - flat: ``{talhao}/{tif, geojsons}`` no mesmo diretório
+    - subdirs: ``{talhao}/imagem/*.tif`` + ``{talhao}/daninhas/*.geojson``
+
+    O primeiro layout casado ganha. Arquivos em outros lugares são ignorados.
+    """
     pairs: list[GeoSourcePair] = []
     for talhao_dir in sorted(p for p in geosource_dir.iterdir() if p.is_dir()):
         talhao = talhao_dir.name
-        tifs = sorted(talhao_dir.glob("*.tif"))
+
+        img_subdir = talhao_dir / "imagem"
+        gj_subdir = talhao_dir / "daninhas"
+        # busca TIF: subdir 'imagem' tem prioridade se existir; senão, direto no talhao_dir
+        tifs = sorted(img_subdir.glob("*.tif")) if img_subdir.is_dir() else sorted(talhao_dir.glob("*.tif"))
         tif = tifs[0] if tifs else Path("__missing__.tif")
+        # busca geojsons: idem, 'daninhas' primeiro
+        gj_dir_used = gj_subdir if gj_subdir.is_dir() else talhao_dir
+        gj_files = sorted(gj_dir_used.glob("*.geojson"))
 
         by_class: dict[int, list[Path]] = {}
-        for gj in sorted(talhao_dir.glob("*.geojson")):
+        for gj in gj_files:
             cid = _match_class(gj.stem, class_map)
             if cid is None:
                 print(f"  [aviso] {gj.name}: nome não casa com nenhuma classe conhecida")
