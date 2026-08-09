@@ -23,7 +23,29 @@ def _talhao_of(stem: str) -> str:
     return re.split(r"_r\d+_c\d+$", stem)[0]
 
 
+def _restore_golden_to_live(live_dir: Path, golden_dir: Path) -> int:
+    """Move tudo do golden de volta para live. Torna a operação idempotente:
+    chamadas sucessivas sempre produzem o estado correto."""
+    moved = 0
+    for sub in ("images", "labels"):
+        g = golden_dir / sub
+        l = live_dir / sub
+        if not g.is_dir():
+            continue
+        l.mkdir(parents=True, exist_ok=True)
+        for f in list(g.glob("*")):
+            if f.is_file():
+                shutil.move(str(f), l / f.name)
+                moved += 1
+    return moved
+
+
 def split(live_dir: Path, golden_dir: Path, val_talhoes: list[str]) -> dict[str, int]:
+    # idempotente: sempre restaura o estado unificado antes de re-splitar
+    restored = _restore_golden_to_live(live_dir, golden_dir)
+    if restored:
+        print(f"[reset] {restored} arquivos movidos do golden de volta para live")
+
     images_src = live_dir / "images"
     labels_src = live_dir / "labels"
     images_dst = golden_dir / "images"
@@ -47,17 +69,21 @@ def split(live_dir: Path, golden_dir: Path, val_talhoes: list[str]) -> dict[str,
             if src.exists():
                 shutil.move(str(src), dst_dir / f"{stem}{ext}")
 
-    # atualiza manifest de background
-    manifest = live_dir / "background_tiles.json"
-    if manifest.exists():
-        data = json.loads(manifest.read_text(encoding="utf-8"))
-        keep, moved = [], []
-        for stem in data.get("stems", []):
-            (moved if _talhao_of(stem) in val_set else keep).append(stem)
-        manifest.write_text(json.dumps({"stems": sorted(keep)}, indent=2), encoding="utf-8")
-        (golden_dir / "background_tiles.json").write_text(
-            json.dumps({"stems": sorted(moved)}, indent=2), encoding="utf-8"
-        )
+    # merge dos manifests antes de re-splitar (idempotente)
+    live_manifest = live_dir / "background_tiles.json"
+    gold_manifest = golden_dir / "background_tiles.json"
+    all_stems: set[str] = set()
+    for m in (live_manifest, gold_manifest):
+        if m.exists():
+            try:
+                all_stems.update(json.loads(m.read_text(encoding="utf-8")).get("stems", []))
+            except json.JSONDecodeError:
+                pass
+    keep, moved = [], []
+    for stem in sorted(all_stems):
+        (moved if _talhao_of(stem) in val_set else keep).append(stem)
+    live_manifest.write_text(json.dumps({"stems": keep}, indent=2), encoding="utf-8")
+    gold_manifest.write_text(json.dumps({"stems": moved}, indent=2), encoding="utf-8")
 
     return counts
 
