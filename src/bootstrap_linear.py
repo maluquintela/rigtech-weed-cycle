@@ -1,9 +1,8 @@
 """Provisiona os estados/labels do Linear a partir de seed_linear.yaml.
 
-Executar UMA VEZ ao configurar o time. Idempotente: labels que já existam são
-puladas; estados são apenas conferidos (a criação de estados custom requer
-permissão de admin do time e o Linear não expõe todos pela API pública em
-todos os planos, por isso o script se limita a verificar e reportar).
+Executar UMA VEZ ao configurar o time. Idempotente: labels e states que já
+existam são pulados. Com ``--create-missing-states``, states ausentes são
+criados via API (requer permissão de criar workflow states no time).
 """
 from __future__ import annotations
 
@@ -18,12 +17,17 @@ from src.linear_client import LinearClient
 
 def main() -> None:
     cfg = load_config()
-    parser = argparse.ArgumentParser(description="Provisiona labels do Linear e verifica estados")
+    parser = argparse.ArgumentParser(description="Provisiona labels/states do Linear")
     parser.add_argument(
         "--seed",
         type=Path,
         default=cfg.repo_root / "seed_linear.yaml",
-        help="arquivo com estados esperados e labels a criar",
+        help="arquivo com states e labels",
+    )
+    parser.add_argument(
+        "--create-missing-states",
+        action="store_true",
+        help="cria via API os states listados no seed que não existirem no workflow",
     )
     args = parser.parse_args()
 
@@ -33,14 +37,26 @@ def main() -> None:
     print(f"time: {cfg.linear.team_key} -> {client.team_id()}")
 
     existing_states = client.states()
-    print("\nestados no workflow do time:")
+    print("\nstates no workflow do time:")
     for name in sorted(existing_states):
         print(f"  [ok] {name}")
 
-    print("\nestados esperados por config.yaml:")
-    for expected in vars(cfg.linear.states).values():
-        marker = "[ok]" if expected in existing_states else "[FALTA]"
-        print(f"  {marker} {expected}")
+    print("\nstates esperados por seed:")
+    seed_states = seed.get("states", [])
+    for state_def in seed_states:
+        name = state_def["name"]
+        if name in existing_states:
+            print(f"  [ok] {name}")
+            continue
+        if args.create_missing_states:
+            sid = client.create_state(
+                name=name,
+                type_=state_def["type"],
+                color=state_def.get("color", "#95a5a6"),
+            )
+            print(f"  [criado] {name} -> {sid}")
+        else:
+            print(f"  [FALTA] {name}  (use --create-missing-states)")
 
     print("\nlabels:")
     for label in seed.get("labels", []):

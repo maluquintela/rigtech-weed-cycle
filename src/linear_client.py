@@ -70,20 +70,24 @@ class LinearClient:
 
     @lru_cache(maxsize=1)
     def states(self) -> dict[str, str]:
-        """Mapa ``{nome_estado: uuid}`` do workflow do time."""
+        """Mapa ``{nome_estado: uuid}`` do workflow do time.
+
+        Consulta via ``team(id).states`` — o filtro em ``workflowStates`` no
+        root da API mudou entre versões e passou a devolver 400.
+        """
         data = self._post(
-            "query($tid:String!){workflowStates(filter:{team:{id:{eq:$tid}}}){nodes{id name}}}",
+            "query($tid:String!){team(id:$tid){states{nodes{id name}}}}",
             {"tid": self.team_id()},
         )
-        return {n["name"]: n["id"] for n in data["workflowStates"]["nodes"]}
+        return {n["name"]: n["id"] for n in data["team"]["states"]["nodes"]}
 
     @lru_cache(maxsize=1)
     def labels(self) -> dict[str, str]:
         data = self._post(
-            "query($tid:String!){issueLabels(filter:{team:{id:{eq:$tid}}}){nodes{id name}}}",
+            "query($tid:String!){team(id:$tid){labels{nodes{id name}}}}",
             {"tid": self.team_id()},
         )
-        return {n["name"]: n["id"] for n in data["issueLabels"]["nodes"]}
+        return {n["name"]: n["id"] for n in data["team"]["labels"]["nodes"]}
 
     # --- operações ----------------------------------------------------------
 
@@ -116,6 +120,26 @@ class LinearClient:
         issue = data["issueCreate"]["issue"]
         return issue["id"]
 
+    def create_state(self, name: str, type_: str, color: str = "#95a5a6", position: float | None = None) -> str:
+        """Cria um state no workflow do time. ``type_`` deve ser um dos:
+        ``triage``, ``backlog``, ``unstarted``, ``started``, ``completed``, ``canceled``.
+        """
+        input_: dict[str, Any] = {
+            "teamId": self.team_id(),
+            "name": name,
+            "type": type_,
+            "color": color,
+        }
+        if position is not None:
+            input_["position"] = position
+        data = self._post(
+            "mutation($input:WorkflowStateCreateInput!){workflowStateCreate(input:$input){success workflowState{id name}}}",
+            {"input": input_},
+        )
+        state = data["workflowStateCreate"]["workflowState"]
+        self.states.cache_clear()
+        return state["id"]
+
     def create_label(self, name: str, color: str = "#95a5a6") -> str:
         """Cria uma label se ainda não existir; retorna o UUID."""
         existing = self.labels()
@@ -143,11 +167,11 @@ class LinearClient:
 
     def issues_in_state(self, state: str, label: str | None = None) -> list[dict[str, Any]]:
         state_id = self.states()[state]
-        filt: dict[str, Any] = {"state": {"id": {"eq": state_id}}, "team": {"id": {"eq": self.team_id()}}}
+        filt: dict[str, Any] = {"state": {"id": {"eq": state_id}}}
         if label:
             filt["labels"] = {"name": {"eq": label}}
         data = self._post(
-            "query($f:IssueFilter!){issues(filter:$f){nodes{id identifier title}}}",
-            {"f": filt},
+            "query($tid:String!,$f:IssueFilter!){team(id:$tid){issues(filter:$f){nodes{id identifier title}}}}",
+            {"tid": self.team_id(), "f": filt},
         )
-        return data["issues"]["nodes"]
+        return data["team"]["issues"]["nodes"]

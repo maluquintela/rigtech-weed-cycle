@@ -1,17 +1,34 @@
 # Conteúdo inicial do board do Linear para o ciclo.
 # Consumido por src/bootstrap_linear.py.
 #
-# Estados: verificados contra o workflow do time (não criados pela API).
-# Labels:  criadas se ainda não existirem.
+# States: verificados contra o workflow do time. Com --create-missing-states,
+# são criados via API se ainda não existirem. `type` define o comportamento no
+# board Linear (backlog/unstarted/started/completed/canceled) e não pode ser
+# mudado depois — só recriando o state.
+# Labels: criadas se ainda não existirem.
 
-states_esperados:
-  - Selecionadas
-  - Em anotação
-  - Em revisão (QA)
-  - Pronto para treino
-  - Em treinamento
-  - Avaliado
-  - Aprovado
+states:
+  - name: Selecionadas
+    type: unstarted
+    color: "#6b6f76"       # cinza
+  - name: Em anotação
+    type: started
+    color: "#f2c94c"       # amarelo
+  - name: Em revisão (QA)
+    type: started
+    color: "#eb5757"       # vermelho
+  - name: Pronto para treino
+    type: unstarted
+    color: "#5e6ad2"       # roxo
+  - name: Em treinamento
+    type: started
+    color: "#8777d9"       # roxo mais escuro
+  - name: Avaliado
+    type: completed
+    color: "#4c9aff"       # azul
+  - name: Aprovado
+    type: completed
+    color: "#27ae60"       # verde
 
 labels:
   - name: lote-anotacao
@@ -20,3 +37,7 @@ labels:
     color: "#8777d9"
   - name: run-modelo
     color: "#57d9a3"
+  - name: suspeita
+    color: "#eb5757"
+  - name: versao
+    color: "#5e6ad2"
