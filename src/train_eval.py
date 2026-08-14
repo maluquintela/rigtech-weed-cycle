@@ -167,6 +167,27 @@ def run(
     entry["promoted"] = promoted
     entry["verdict"] = verdict
     _append_history(history_path, entry)
+
+    # Registro opcional em Linear: só roda se LINEAR_API_KEY estiver no ambiente.
+    # Falha do post NÃO derruba o treino — a run já está no history.json.
+    import os
+    if os.environ.get("LINEAR_API_KEY"):
+        try:
+            from src.linear_versions import register_version
+            ciclo_str = os.environ.get("CICLO_ATUAL")
+            ciclo = int(ciclo_str) if ciclo_str and ciclo_str.isdigit() else None
+            issue_id = register_version(
+                entry=entry,
+                team_key=cfg.linear.team_key,
+                endpoint=cfg.linear.endpoint,
+                ciclo=ciclo,
+            )
+            entry["linear_issue_id"] = issue_id
+            print(f"[linear] issue criada: {issue_id}")
+        except Exception as exc:
+            # Post-treino é best-effort. Não vazar erro do Linear e perder o treino.
+            print(f"[linear] falha ao postar (ignorado): {exc}")
+
     return entry
 
 
