@@ -174,8 +174,13 @@ def run(
     if os.environ.get("LINEAR_API_KEY"):
         try:
             from src.linear_versions import register_version
+            from src.linear_client import LinearClient
             ciclo_str = os.environ.get("CICLO_ATUAL")
-            ciclo = int(ciclo_str) if ciclo_str and ciclo_str.isdigit() else None
+            if ciclo_str and ciclo_str.isdigit():
+                ciclo = int(ciclo_str)
+            else:
+                _c = LinearClient(team_key=cfg.linear.team_key, endpoint=cfg.linear.endpoint)
+                ciclo = max(0, _c.count_issues_by_label("versao"))
             issue_id = register_version(
                 entry=entry,
                 team_key=cfg.linear.team_key,

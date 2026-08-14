@@ -165,6 +165,39 @@ class LinearClient:
             {"input": {"issueId": issue_id, "body": body}},
         )
 
+    def count_issues_by_label(self, label: str) -> int:
+        """Conta issues do time com uma label específica (todos os states)."""
+        data = self._post(
+            "query($tid:String!,$f:IssueFilter!){team(id:$tid){issues(filter:$f){nodes{id}}}}",
+            {"tid": self.team_id(), "f": {"labels": {"name": {"eq": label}}}},
+        )
+        return len(data["team"]["issues"]["nodes"])
+
+    def upload_file(self, path: "Path", content_type: str | None = None) -> str:
+        """Sobe um arquivo para o Linear e devolve o assetUrl (URL pública p/ embed).
+
+        Usa o fluxo de 3 passos do Linear:
+          1. mutation fileUpload → recebe uploadUrl (S3 pré-assinado) + assetUrl
+          2. PUT do binário para uploadUrl com os headers exigidos
+          3. o assetUrl fica disponível para markdown ``![](assetUrl)``
+        """
+        import mimetypes
+        from pathlib import Path
+
+        p = Path(path)
+        size = p.stat().st_size
+        ctype = content_type or mimetypes.guess_type(p.name)[0] or "application/octet-stream"
+
+        data = self._post(
+            "mutation($c:String!,$f:String!,$s:Int!){fileUpload(contentType:$c,filename:$f,size:$s){success uploadFile{uploadUrl assetUrl headers{key value}}}}",
+            {"c": ctype, "f": p.name, "s": size},
+        )
+        info = data["fileUpload"]["uploadFile"]
+        headers = {h["key"]: h["value"] for h in info["headers"]}
+        put_resp = requests.put(info["uploadUrl"], data=p.read_bytes(), headers=headers, timeout=self.timeout * 3)
+        put_resp.raise_for_status()
+        return info["assetUrl"]
+
     def issues_in_state(self, state: str, label: str | None = None) -> list[dict[str, Any]]:
         state_id = self.states()[state]
         filt: dict[str, Any] = {"state": {"id": {"eq": state_id}}}

@@ -43,7 +43,8 @@ def main() -> None:
     parser.add_argument("--run-id", help="run_id específico do history.json")
     parser.add_argument("--last", action="store_true", help="pega a última entrada de history.json")
     parser.add_argument("--history", type=Path, default=cfg.paths.history)
-    parser.add_argument("--ciclo", type=int, default=None, help="número do ciclo (para label ciclo-N)")
+    parser.add_argument("--ciclo", type=int, default=None,
+                        help="número do ciclo. Se omitido, auto-detecta via Linear (conta issues 'versao')")
     parser.add_argument("--dry-run", action="store_true", help="imprime o que seria postado, não envia")
     args = parser.parse_args()
 
@@ -63,11 +64,19 @@ def main() -> None:
         print("[dry-run] nada foi postado.")
         return
 
+    ciclo = args.ciclo
+    if ciclo is None:
+        from src.linear_client import LinearClient
+        client = LinearClient(team_key=cfg.linear.team_key, endpoint=cfg.linear.endpoint)
+        n = client.count_issues_by_label("versao")
+        ciclo = max(0, n)
+        print(f"[ciclo] auto-detectado: ciclo-{ciclo}")
+
     issue_id = register_version(
         entry=entry,
         team_key=cfg.linear.team_key,
         endpoint=cfg.linear.endpoint,
-        ciclo=args.ciclo,
+        ciclo=ciclo,
     )
     print(f"[ok] issue criada em Linear: {issue_id}")
 
